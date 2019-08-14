@@ -186,6 +186,11 @@ static void set_identity(unsigned uid) {
 	}
 }
 
+static void set_context(const char *con) {
+	int ret = setcon(con);
+	LOGD("setcon %s ret: %u", con, ret);
+}
+
 void su_daemon_handler(int client, struct ucred *credential) {
 	LOGD("su: request from pid=[%d], client=[%d]\n", credential->pid, client);
 
@@ -199,6 +204,7 @@ void su_daemon_handler(int client, struct ucred *credential) {
 	xxread(client, &ctx.req, sizeof(su_req_base));
 	ctx.req.shell = read_string(client);
 	ctx.req.command = read_string(client);
+	ctx.req.context = read_string(client);
 
 	if (ctx.info->access.log)
 		app_log(ctx);
@@ -357,6 +363,7 @@ void su_daemon_handler(int client, struct ucred *credential) {
 	sigemptyset(&block_set);
 	sigprocmask(SIG_SETMASK, &block_set, nullptr);
 	set_identity(ctx.req.uid);
+	set_context(ctx.req.context);
 	execvp(ctx.req.shell, (char **) argv);
 	fprintf(stderr, "Cannot execute %s: %s\n", ctx.req.shell, strerror(errno));
 	PLOGE("exec");

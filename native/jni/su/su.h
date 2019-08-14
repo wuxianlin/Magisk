@@ -48,11 +48,13 @@ struct su_req_base {
 struct su_request : public su_req_base {
 	const char *shell = DEFAULT_SHELL;
 	const char *command = "";
+	const char *context = "u:r:magisk:s0";
 	su_request(bool dyn = false) : dyn(dyn) {}
 	~su_request() {
 		if (dyn) {
 			free(const_cast<char*>(shell));
 			free(const_cast<char*>(command));
+			free(const_cast<char*>(context));
 		}
 	}
 

@@ -144,7 +144,7 @@ int su_client_main(int argc, char *argv[]) {
 				printf("%s\n", MAGISK_VERSION ":MAGISKSU");
 				exit(EXIT_SUCCESS);
 			case 'z':
-				// Do nothing, placed here for legacy support :)
+				su_req.context = optarg;
 				break;
 			case 'M':
 				su_req.mount_master = true;
@@ -184,6 +184,7 @@ int su_client_main(int argc, char *argv[]) {
 	xwrite(fd, &su_req, sizeof(su_req_base));
 	write_string(fd, su_req.shell);
 	write_string(fd, su_req.command);
+	write_string(fd, su_req.context);
 
 	// Wait for ack from daemon
 	if (read_int(fd)) {
