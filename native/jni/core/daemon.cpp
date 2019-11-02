@@ -142,6 +142,14 @@ static void main_daemon() {
 		}
 		return true;
 	});
+	if (SDK_INT == -1) parse_prop_file("/system/build_default.prop", [](auto key, auto val) -> bool {
+		if (key == "ro.build.version.sdk") {
+			LOGI("* Device API level: %s\n", val.data());
+			SDK_INT = parse_int(val);
+			return false;
+		}
+		return true;
+	});
 
 	// Load config status
 	parse_prop_file(MAGISKTMP "/config", [](auto key, auto val) -> bool {
