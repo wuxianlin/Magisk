@@ -1,0 +1,10 @@
+#!/system/bin/sh
+
+dir="$(dirname "$(readlink -f "$0")")";
+
+chmod 755 "$dir/avbtool" "$dir/python/bin/python";
+
+LD_LIBRARY_PATH="$dir/python/lib" \
+  PYTHONPATH="$dir/python/extras" \
+  PYTHONHOME="$dir/python" \
+  "$dir/python/bin/python" "$dir/avb/avbtool" "$@";

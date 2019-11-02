@@ -16,6 +16,7 @@
 COMMONDIR=$INSTALLER/common
 APK=$COMMONDIR/magisk.apk
 CHROMEDIR=$INSTALLER/chromeos
+AVBTOOL=$INSTALLER/avbtool-arm
 
 # Default permissions
 umask 022
@@ -72,7 +73,7 @@ ui_print "- Constructing environment"
 # Copy required files
 rm -rf $MAGISKBIN/* 2>/dev/null
 mkdir -p $MAGISKBIN 2>/dev/null
-cp -af $BINDIR/. $COMMONDIR/. $CHROMEDIR $BBDIR/busybox $MAGISKBIN
+cp -af $BINDIR/. $COMMONDIR/. $CHROMEDIR $AVBTOOL $BBDIR/busybox $MAGISKBIN
 chmod -R 755 $MAGISKBIN
 
 # addon.d

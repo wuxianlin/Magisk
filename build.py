@@ -439,6 +439,13 @@ def zip_main(args):
             target = os.path.join('chromeos', tool)
             zip_with_msg(zipf, source, target)
 
+        # avbtool-arm
+        for dirpath, dirnames, filenames in os.walk(os.path.join('tools', 'avbtool-arm')):
+            for filename in filenames:
+                source = os.path.join(dirpath, filename)
+                target = os.path.join(dirpath.replace('tools'+os.sep, ''), filename)
+                zip_with_msg(zipf, source, target)
+
         # End of zipping
 
     output = os.path.join(config['outdir'], f'Magisk-v{config["version"]}.zip' if config['prettyName'] else

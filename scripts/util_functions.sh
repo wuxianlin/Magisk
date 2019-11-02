@@ -306,6 +306,8 @@ patch_boot_image() {
   # Source the boot patcher
   . ./boot_patch.sh "$BOOTIMAGE"
 
+  ./avbtool-arm/avbtool add_hash_footer --image new-boot.img --partition_size $(wc -c < "$BOOTIMAGE") --partition_name boot
+
   ui_print "- Flashing new boot image"
 
   if ! flash_image new-boot.img "$BOOTIMAGE"; then
