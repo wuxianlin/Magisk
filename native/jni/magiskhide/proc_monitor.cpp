@@ -76,7 +76,7 @@ static inline long xptrace(int request, pid_t pid, void *addr = nullptr, intptr_
 }
 
 void update_uid_map() {
-	MutexGuard lock(monitor_lock);
+	mutex_guard lock(monitor_lock);
 	uid_proc_map.clear();
 	string data_path(APP_DATA_DIR);
 	data_path += "/0/";
@@ -155,6 +155,10 @@ static void inotify_event(int) {
 	check_zygote();
 }
 
+static void check_zygote(int) {
+	check_zygote();
+}
+
 // Workaround for the lack of pthread_cancel
 static void term_thread(int) {
 	LOGD("proc_monitor: cleaning up\n");
@@ -214,8 +218,8 @@ static bool check_pid(int pid) {
 		return true;
 	}
 
-	// Still zygote/usap
-	if (strncmp(cmdline, "zygote", 6) == 0 || strncmp(cmdline, "usap", 4) == 0)
+	if (cmdline == "zygote"sv || cmdline == "zygote32"sv || cmdline == "zygote64"sv ||
+		cmdline == "usap32"sv || cmdline == "usap64"sv)
 		return false;
 
 	int uid = st.st_uid % 100000;
@@ -312,6 +316,8 @@ void proc_monitor() {
 	sigaction(SIGTERMTHRD, &act, nullptr);
 	act.sa_handler = inotify_event;
 	sigaction(SIGIO, &act, nullptr);
+	act.sa_handler = check_zygote;
+	sigaction(SIGZYGOTE, &act, nullptr);
 
 	setup_inotify();
 
@@ -336,7 +342,7 @@ void proc_monitor() {
 			continue;
 		}
 		bool detach = false;
-		RunFinally detach_task([&] {
+		run_finally f([&] {
 			if (detach)
 				// Non of our business now
 				detach_pid(pid);

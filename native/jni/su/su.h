@@ -5,6 +5,7 @@
 #include <memory>
 
 #include <db.h>
+#include <utils.h>
 
 #define DEFAULT_SHELL "/system/bin/sh"
 
@@ -29,8 +30,7 @@ public:
 
 	su_info(unsigned uid = 0);
 	~su_info();
-	void lock();
-	void unlock();
+	mutex_guard lock();
 	bool is_fresh();
 	void refresh();
 
@@ -70,5 +70,5 @@ struct su_context {
 
 void app_log(const su_context &ctx);
 void app_notify(const su_context &ctx);
-void app_connect(const char *socket, const std::shared_ptr<su_info> &info);
+void app_socket(const char *socket, const std::shared_ptr<su_info> &info);
 void socket_send_request(int fd, const std::shared_ptr<su_info> &info);

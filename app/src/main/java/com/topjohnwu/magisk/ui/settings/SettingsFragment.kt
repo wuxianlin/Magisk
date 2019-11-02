@@ -13,21 +13,16 @@ import androidx.preference.ListPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceCategory
 import androidx.preference.SwitchPreferenceCompat
-import com.skoumal.teanity.extensions.subscribeK
-import com.skoumal.teanity.util.KObservableField
-import com.topjohnwu.magisk.BuildConfig
-import com.topjohnwu.magisk.Config
-import com.topjohnwu.magisk.Const
-import com.topjohnwu.magisk.R
+import com.topjohnwu.magisk.*
+import com.topjohnwu.magisk.base.BasePreferenceFragment
 import com.topjohnwu.magisk.data.database.RepoDao
 import com.topjohnwu.magisk.databinding.CustomDownloadDialogBinding
-import com.topjohnwu.magisk.extensions.toLangTag
+import com.topjohnwu.magisk.databinding.DialogCustomNameBinding
+import com.topjohnwu.magisk.extensions.subscribeK
 import com.topjohnwu.magisk.model.download.DownloadService
 import com.topjohnwu.magisk.model.entity.internal.Configuration
 import com.topjohnwu.magisk.model.entity.internal.DownloadSubject
 import com.topjohnwu.magisk.model.observer.Observer
-import com.topjohnwu.magisk.net.Networking
-import com.topjohnwu.magisk.ui.base.BasePreferenceFragment
 import com.topjohnwu.magisk.utils.*
 import com.topjohnwu.magisk.view.dialogs.FingerprintAuthDialog
 import com.topjohnwu.superuser.Shell
@@ -57,46 +52,98 @@ class SettingsFragment : BasePreferenceFragment() {
         preferenceManager.setStorageDeviceProtected()
         setPreferencesFromResource(R.xml.app_settings, rootKey)
 
-        updateChannel = findPref(Config.Key.UPDATE_CHANNEL)
-        rootConfig = findPref(Config.Key.ROOT_ACCESS)
-        autoRes = findPref(Config.Key.SU_AUTO_RESPONSE)
-        requestTimeout = findPref(Config.Key.SU_REQUEST_TIMEOUT)
-        suNotification = findPref(Config.Key.SU_NOTIFICATION)
-        multiuserConfig = findPref(Config.Key.SU_MULTIUSER_MODE)
-        nsConfig = findPref(Config.Key.SU_MNT_NS)
-        val reauth = findPreference(Config.Key.SU_REAUTH) as SwitchPreferenceCompat
-        val fingerprint = findPreference(Config.Key.SU_FINGERPRINT) as SwitchPreferenceCompat
-        val generalCatagory = findPreference("general") as PreferenceCategory
-        val magiskCategory = findPreference("magisk") as PreferenceCategory
-        val suCategory = findPreference("superuser") as PreferenceCategory
-        val hideManager = findPreference("hide")
-        hideManager.setOnPreferenceClickListener {
-            PatchAPK.hideManager(requireContext())
-            true
+        // Get preferences
+        updateChannel = findPreference(Config.Key.UPDATE_CHANNEL)!!
+        rootConfig = findPreference(Config.Key.ROOT_ACCESS)!!
+        autoRes = findPreference(Config.Key.SU_AUTO_RESPONSE)!!
+        requestTimeout = findPreference(Config.Key.SU_REQUEST_TIMEOUT)!!
+        suNotification = findPreference(Config.Key.SU_NOTIFICATION)!!
+        multiuserConfig = findPreference(Config.Key.SU_MULTIUSER_MODE)!!
+        nsConfig = findPreference(Config.Key.SU_MNT_NS)!!
+        val reauth = findPreference<SwitchPreferenceCompat>(Config.Key.SU_REAUTH)!!
+        val fingerprint = findPreference<SwitchPreferenceCompat>(Config.Key.SU_FINGERPRINT)!!
+        val generalCatagory = findPreference<PreferenceCategory>("general")!!
+        val magiskCategory = findPreference<PreferenceCategory>("magisk")!!
+        val suCategory = findPreference<PreferenceCategory>("superuser")!!
+        val hideManager = findPreference<Preference>("hide")!!
+        val restoreManager = findPreference<Preference>("restore")!!
+
+        // Remove/Disable entries
+
+        // Only show canary channels if user is already on canary channel
+        // or the user have already chosen canary channel
+        if (!Utils.isCanary && Config.updateChannel < Config.Value.CANARY_CHANNEL) {
+            // Remove the last 2 entries
+            val entries = updateChannel.entries
+            updateChannel.entries = entries.copyOf(entries.size - 2)
         }
-        val restoreManager = findPreference("restore")
-        restoreManager.setOnPreferenceClickListener {
-            DownloadService(requireContext()) {
-                subject = DownloadSubject.Manager(Configuration.APK.Restore)
+
+        // Remove dangerous settings in secondary user
+        if (Const.USER_ID > 0) {
+            suCategory.removePreference(multiuserConfig)
+        }
+
+        // Remove re-authentication option on Android O, it will not work
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            suCategory.removePreference(reauth)
+        }
+
+        // Disable fingerprint option if not possible
+        if (!FingerprintHelper.canUseFingerprint()) {
+            fingerprint.isEnabled = false
+            fingerprint.isChecked = false
+            fingerprint.setSummary(R.string.disable_fingerprint)
+        }
+
+        if (Const.USER_ID == 0 && Info.isConnected.value && Shell.rootAccess()) {
+            if (activity.packageName == BuildConfig.APPLICATION_ID) {
+                generalCatagory.removePreference(restoreManager)
+                hideManager.setOnPreferenceClickListener {
+                    showManagerNameDialog {
+                        PatchAPK.hideManager(requireContext(), it)
+                    }
+                    true
+                }
+            } else {
+                generalCatagory.removePreference(hideManager)
+                restoreManager.setOnPreferenceClickListener {
+                    DownloadService(requireContext()) {
+                        subject = DownloadSubject.Manager(Configuration.APK.Restore)
+                    }
+                    true
+                }
             }
-            true
+        } else {
+            // Remove if not primary user, no connection, or no root
+            generalCatagory.removePreference(restoreManager)
+            generalCatagory.removePreference(hideManager)
         }
-        findPreference("clear").setOnPreferenceClickListener {
+
+        if (!Utils.showSuperUser()) {
+            preferenceScreen.removePreference(suCategory)
+        }
+
+        if (!Shell.rootAccess()) {
+            preferenceScreen.removePreference(magiskCategory)
+            generalCatagory.removePreference(hideManager)
+        }
+
+        findPreference<Preference>("clear")?.setOnPreferenceClickListener {
             Completable.fromAction { repoDB.clear() }.subscribeK {
                 Utils.toast(R.string.repo_cache_cleared, Toast.LENGTH_SHORT)
             }
             true
         }
-        findPreference("hosts").setOnPreferenceClickListener {
+        findPreference<Preference>("hosts")?.setOnPreferenceClickListener {
             Shell.su("add_hosts_module").submit {
                 Utils.toast(R.string.settings_hosts_toast, Toast.LENGTH_SHORT)
             }
             true
         }
 
-        findPreference(Config.Key.DOWNLOAD_PATH).apply {
+        findPreference<Preference>(Config.Key.DOWNLOAD_PATH)?.apply {
             summary = Config.downloadPath
-        }.setOnPreferenceClickListener { preference ->
+        }?.setOnPreferenceClickListener { preference ->
             activity.withExternalRW {
                 onSuccess {
                     showDownloadDialog {
@@ -122,60 +169,9 @@ class SettingsFragment : BasePreferenceFragment() {
             true
         }
 
-        setLocalePreference(findPreference(Config.Key.LOCALE) as ListPreference)
-
-        /* We only show canary channels if user is already on canary channel
-         * or the user have already chosen canary channel */
-        if (!Utils.isCanary && Config.updateChannel < Config.Value.CANARY_CHANNEL) {
-            // Remove the last 2 entries
-            val entries = updateChannel.entries
-            updateChannel.entries = entries.copyOf(entries.size - 2)
-
-        }
+        setLocalePreference(findPreference(Config.Key.LOCALE)!!)
 
         setSummary()
-
-        // Disable dangerous settings in secondary user
-        if (Const.USER_ID > 0) {
-            suCategory.removePreference(multiuserConfig)
-        }
-
-        // Disable re-authentication option on Android O, it will not work
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            reauth.isEnabled = false
-            reauth.isChecked = false
-            reauth.setSummary(R.string.android_o_not_support)
-        }
-
-        // Disable fingerprint option if not possible
-        if (!FingerprintHelper.canUseFingerprint()) {
-            fingerprint.isEnabled = false
-            fingerprint.isChecked = false
-            fingerprint.setSummary(R.string.disable_fingerprint)
-        }
-
-        if (Shell.rootAccess() && Const.USER_ID == 0) {
-            if (activity.packageName == BuildConfig.APPLICATION_ID) {
-                generalCatagory.removePreference(restoreManager)
-            } else {
-                if (!Networking.checkNetworkStatus(requireContext())) {
-                    generalCatagory.removePreference(restoreManager)
-                }
-                generalCatagory.removePreference(hideManager)
-            }
-        } else {
-            generalCatagory.removePreference(restoreManager)
-            generalCatagory.removePreference(hideManager)
-        }
-
-        if (!Utils.showSuperUser()) {
-            preferenceScreen.removePreference(suCategory)
-        }
-
-        if (!Shell.rootAccess()) {
-            preferenceScreen.removePreference(magiskCategory)
-            generalCatagory.removePreference(hideManager)
-        }
     }
 
     override fun onSharedPreferenceChanged(prefs: SharedPreferences, key: String) {
@@ -202,7 +198,7 @@ class SettingsFragment : BasePreferenceFragment() {
                 Shell.su("magiskhide --disable").submit()
             }
             Config.Key.LOCALE -> {
-                LocaleManager.setLocale(activity.application)
+                refreshLocale()
                 activity.recreate()
             }
             Config.Key.CHECK_UPDATES -> Utils.scheduleUpdateCheck(activity)
@@ -226,27 +222,12 @@ class SettingsFragment : BasePreferenceFragment() {
 
     private fun setLocalePreference(lp: ListPreference) {
         lp.isEnabled = false
-        availableLocales.map {
-                val names = mutableListOf<String>()
-                val values = mutableListOf<String>()
-
-                names.add(
-                    LocaleManager.getString(defaultLocale, R.string.system_default)
-                )
-                values.add("")
-
-                it.forEach { locale ->
-                    names.add(locale.getDisplayName(locale))
-                    values.add(locale.toLangTag())
-                }
-
-                Pair(names.toTypedArray(), values.toTypedArray())
-            }.subscribeK { (names, values) ->
-                lp.isEnabled = true
-                lp.entries = names
-                lp.entryValues = values
-                lp.summary = currentLocale.getDisplayName(currentLocale)
-            }
+        availableLocales.subscribeK { (names, values) ->
+            lp.isEnabled = true
+            lp.entries = names
+            lp.entryValues = values
+            lp.summary = currentLocale.getDisplayName(currentLocale)
+        }
     }
 
     private fun setSummary(key: String) {
@@ -298,8 +279,8 @@ class SettingsFragment : BasePreferenceFragment() {
         AlertDialog.Builder(requireActivity())
             .setTitle(R.string.settings_update_custom)
             .setView(v)
-            .setPositiveButton(R.string.ok) { _, _ -> onSuccess(url.text.toString()) }
-            .setNegativeButton(R.string.close) { _, _ -> onCancel() }
+            .setPositiveButton(android.R.string.ok) { _, _ -> onSuccess(url.text.toString()) }
+            .setNegativeButton(android.R.string.cancel) { _, _ -> onCancel() }
             .setOnCancelListener { onCancel() }
             .show()
     }
@@ -323,11 +304,35 @@ class SettingsFragment : BasePreferenceFragment() {
         AlertDialog.Builder(requireActivity())
             .setTitle(R.string.settings_download_path_title)
             .setView(binding.root)
-            .setPositiveButton(R.string.ok) { _, _ ->
+            .setPositiveButton(android.R.string.ok) { _, _ ->
                 Utils.ensureDownloadPath(data.text.value)?.let { onSuccess(data.text.value) }
                     ?: Utils.toast(R.string.settings_download_path_error, Toast.LENGTH_SHORT)
             }
-            .setNegativeButton(R.string.close, null)
+            .setNegativeButton(android.R.string.cancel, null)
             .show()
+    }
+
+    private inline fun showManagerNameDialog(
+        crossinline onSuccess: (String) -> Unit
+    ) {
+        val data = ManagerNameData()
+        val view = DialogCustomNameBinding
+            .inflate(LayoutInflater.from(requireContext()))
+            .also { it.data = data }
+
+        AlertDialog.Builder(requireActivity())
+            .setTitle(R.string.settings_app_name)
+            .setView(view.root)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                if (view.dialogNameInput.error.isNullOrBlank()) {
+                    onSuccess(data.name.value)
+                }
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    inner class ManagerNameData {
+        val name = KObservableField(resources.getString(R.string.re_app_name))
     }
 }

@@ -17,14 +17,6 @@
 #include <logging.h>
 #include <utils.h>
 
-unsigned get_shell_uid() {
-	struct passwd* ppwd = getpwnam("shell");
-	if (nullptr == ppwd)
-		return 2000;
-
-	return ppwd->pw_uid;
-}
-
 int fork_dont_care() {
 	int pid = xfork();
 	if (pid) {
@@ -188,4 +180,35 @@ int parse_int(const char *s) {
 		val = val * 10 + c - '0';
 	}
 	return val;
+}
+
+uint32_t binary_gcd(uint32_t u, uint32_t v) {
+	if (u == 0) return v;
+	if (v == 0) return u;
+	auto shift = __builtin_ctz(u | v);
+	u >>= __builtin_ctz(u);
+	do {
+		v >>= __builtin_ctz(v);
+		if (u > v) {
+			auto t = v;
+			v = u;
+			u = t;
+		}
+		v -= u;
+	} while (v != 0);
+	return u << shift;
+}
+
+int switch_mnt_ns(int pid) {
+	char mnt[32];
+	snprintf(mnt, sizeof(mnt), "/proc/%d/ns/mnt", pid);
+	if (access(mnt, R_OK) == -1) return 1; // Maybe process died..
+
+	int fd, ret;
+	fd = xopen(mnt, O_RDONLY);
+	if (fd < 0) return 1;
+	// Switch to its namespace
+	ret = xsetns(fd, 0);
+	close(fd);
+	return ret;
 }

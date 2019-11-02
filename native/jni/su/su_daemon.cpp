@@ -22,9 +22,6 @@
 
 using namespace std;
 
-#define LOCK_CACHE()   pthread_mutex_lock(&cache_lock)
-#define UNLOCK_CACHE() pthread_mutex_unlock(&cache_lock)
-
 static pthread_mutex_t cache_lock = PTHREAD_MUTEX_INITIALIZER;
 static shared_ptr<su_info> cached;
 
@@ -36,12 +33,8 @@ su_info::~su_info() {
 	pthread_mutex_destroy(&_lock);
 }
 
-void su_info::lock() {
-	pthread_mutex_lock(&_lock);
-}
-
-void su_info::unlock() {
-	pthread_mutex_unlock(&_lock);
+mutex_guard su_info::lock() {
+	return mutex_guard(_lock);
 }
 
 bool su_info::is_fresh() {
@@ -87,23 +80,19 @@ static void database_check(const shared_ptr<su_info> &info) {
 }
 
 static shared_ptr<su_info> get_su_info(unsigned uid) {
+	LOGD("su: request from uid=[%d]\n", uid);
+
 	shared_ptr<su_info> info;
 
-	// Get from cache or new instance
-	LOCK_CACHE();
-	if (!cached || cached->uid != uid || !cached->is_fresh())
-		cached = make_shared<su_info>(uid);
-	info = cached;
-	info->refresh();
-	UNLOCK_CACHE();
+	{
+		mutex_guard lock(cache_lock);
+		if (!cached || cached->uid != uid || !cached->is_fresh())
+			cached = make_shared<su_info>(uid);
+		cached->refresh();
+		info = cached;
+	}
 
-	LOGD("su: request from uid=[%d]\n", info->uid);
-
-	// Lock before the policy is determined
-	info->lock();
-	RunFinally unlock([&] {
-		info->unlock();
-	});
+	auto g = info->lock();
 
 	if (info->access.policy == QUERY) {
 		// Not cached, get data from database
@@ -120,19 +109,17 @@ static shared_ptr<su_info> get_su_info(unsigned uid) {
 			case ROOT_ACCESS_DISABLED:
 				LOGW("Root access is disabled!\n");
 				info->access = NO_SU_ACCESS;
-				return info;
+				break;
 			case ROOT_ACCESS_ADB_ONLY:
 				if (info->uid != UID_SHELL) {
 					LOGW("Root access limited to ADB only!\n");
 					info->access = NO_SU_ACCESS;
-					return info;
 				}
 				break;
 			case ROOT_ACCESS_APPS_ONLY:
 				if (info->uid == UID_SHELL) {
 					LOGW("Root access is disabled for ADB!\n");
 					info->access = NO_SU_ACCESS;
-					return info;
 				}
 				break;
 			case ROOT_ACCESS_APPS_AND_ADB:
@@ -148,6 +135,8 @@ static shared_ptr<su_info> get_su_info(unsigned uid) {
 			info->access = NO_SU_ACCESS;
 			return info;
 		}
+	} else {
+		return info;
 	}
 
 	// If still not determined, ask manager
@@ -155,7 +144,7 @@ static shared_ptr<su_info> get_su_info(unsigned uid) {
 	int sockfd = create_rand_socket(&addr);
 
 	// Connect manager
-	app_connect(addr.sun_path + 1, info);
+	app_socket(addr.sun_path + 1, info);
 	int fd = socket_accept(sockfd, 60);
 	if (fd < 0) {
 		info->access.policy = DENY;
@@ -331,13 +320,12 @@ void su_daemon_handler(int client, struct ucred *credential) {
 
 	// Setup environment
 	umask(022);
-	char path[32], buf[4096];
+	char path[32];
 	snprintf(path, sizeof(path), "/proc/%d/cwd", ctx.pid);
-	xreadlink(path, buf, sizeof(buf));
-	chdir(buf);
+	chdir(path);
 	snprintf(path, sizeof(path), "/proc/%d/environ", ctx.pid);
-	memset(buf, 0, sizeof(buf));
-	int fd = open(path, O_RDONLY);
+	char buf[4096] = { 0 };
+	int fd = xopen(path, O_RDONLY);
 	read(fd, buf, sizeof(buf));
 	close(fd);
 	clearenv();
@@ -350,13 +338,14 @@ void su_daemon_handler(int client, struct ucred *credential) {
 		pw = getpwuid(ctx.req.uid);
 		if (pw) {
 			setenv("HOME", pw->pw_dir, 1);
-			if (ctx.req.login || ctx.req.uid) {
-				setenv("USER", pw->pw_name, 1);
-				setenv("LOGNAME", pw->pw_name, 1);
-			}
+			setenv("USER", pw->pw_name, 1);
+			setenv("LOGNAME", pw->pw_name, 1);
 			setenv("SHELL", ctx.req.shell, 1);
 		}
 	}
+	const char *ld_path = getenv("LD_LIBRARY_PATH");
+	if (ld_path && strncmp(ld_path, ":/apex/com.android.runtime/lib", 30) == 0)
+		unsetenv("LD_LIBRARY_PATH");
 
 	// Unblock all signals
 	sigset_t block_set;

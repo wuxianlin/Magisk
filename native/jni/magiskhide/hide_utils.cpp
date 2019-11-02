@@ -57,9 +57,31 @@ static void kill_process(const char *name, bool multi = false) {
 	});
 }
 
+static bool validate(const char *s) {
+	bool dot = false;
+	for (char c; (c = *s); ++s) {
+		if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+			(c >= '0' && c <= '9') || c == '_' || c == ':') {
+			dot = false;
+			continue;
+		}
+		if (c == '.') {
+			if (dot)  // No consecutive dots
+				return false;
+			dot = true;
+			continue;
+		}
+		return false;
+	}
+	return true;
+}
+
 static int add_list(const char *pkg, const char *proc = "") {
 	if (proc[0] == '\0')
 		proc = pkg;
+
+	if (!validate(pkg) || !validate(proc))
+		return HIDE_INVALID_PKG;
 
 	for (auto &hide : hide_set)
 		if (hide.first == pkg && hide.second == proc)
@@ -76,7 +98,7 @@ static int add_list(const char *pkg, const char *proc = "") {
 
 	// Critical region
 	{
-		MutexGuard lock(monitor_lock);
+		mutex_guard lock(monitor_lock);
 		hide_set.emplace(pkg, proc);
 	}
 
@@ -97,7 +119,7 @@ int add_list(int client) {
 static int rm_list(const char *pkg, const char *proc = "") {
 	{
 		// Critical region
-		MutexGuard lock(monitor_lock);
+		mutex_guard lock(monitor_lock);
 		bool remove = false;
 		auto next = hide_set.begin();
 		decltype(next) cur;
@@ -195,7 +217,7 @@ static void set_hide_config() {
 	db_err(err);
 }
 
-static inline void launch_err(int client, int code = DAEMON_ERROR) {
+[[noreturn]] static void launch_err(int client, int code = DAEMON_ERROR) {
 	if (code != HIDE_IS_ENABLED)
 		hide_enabled = false;
 	if (client >= 0) {
@@ -258,10 +280,14 @@ int stop_magiskhide() {
 }
 
 void auto_start_magiskhide() {
-	db_settings dbs;
-	get_db_settings(dbs, HIDE_CONFIG);
-	if (dbs[HIDE_CONFIG]) {
-		new_daemon_thread([]() -> void { launch_magiskhide(-1); });
+	if (hide_enabled) {
+		pthread_kill(proc_monitor_thread, SIGZYGOTE);
+	} else if (SDK_INT >= 19) {
+		db_settings dbs;
+		get_db_settings(dbs, HIDE_CONFIG);
+		if (dbs[HIDE_CONFIG]) {
+			new_daemon_thread([]{ launch_magiskhide(-1); });
+		}
 	}
 }
 

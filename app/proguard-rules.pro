@@ -29,10 +29,14 @@
 }
 
 # DelegateWorker
--keep,allowobfuscation class * extends com.topjohnwu.magisk.model.worker.DelegateWorker
+-keep,allowobfuscation class * extends com.topjohnwu.magisk.base.DelegateWorker
 
 # BootSigner
--keepclassmembers class com.topjohnwu.signing.BootSigner { *; }
+-keep class a.a { *; }
+
+# Workaround R8 bug
+-keep,allowobfuscation class com.topjohnwu.magisk.model.receiver.GeneralReceiver
+-keepclassmembers class a.e { *; }
 
 # Strip logging
 -assumenosideeffects class timber.log.Timber.Tree { *; }

@@ -2,22 +2,22 @@ package com.topjohnwu.magisk.ui.superuser
 
 import android.content.pm.PackageManager
 import android.content.res.Resources
-import com.skoumal.teanity.databinding.ComparableRvItem
-import com.skoumal.teanity.extensions.applySchedulers
-import com.skoumal.teanity.extensions.subscribeK
-import com.skoumal.teanity.rxbus.RxBus
-import com.skoumal.teanity.util.DiffObservableList
-import com.skoumal.teanity.viewevents.SnackbarEvent
 import com.topjohnwu.magisk.BR
 import com.topjohnwu.magisk.R
+import com.topjohnwu.magisk.base.viewmodel.BaseViewModel
 import com.topjohnwu.magisk.data.database.PolicyDao
+import com.topjohnwu.magisk.databinding.ComparableRvItem
+import com.topjohnwu.magisk.extensions.applySchedulers
+import com.topjohnwu.magisk.extensions.subscribeK
 import com.topjohnwu.magisk.extensions.toggle
 import com.topjohnwu.magisk.model.entity.MagiskPolicy
 import com.topjohnwu.magisk.model.entity.recycler.PolicyRvItem
 import com.topjohnwu.magisk.model.events.PolicyEnableEvent
 import com.topjohnwu.magisk.model.events.PolicyUpdateEvent
-import com.topjohnwu.magisk.ui.base.MagiskViewModel
+import com.topjohnwu.magisk.model.events.SnackbarEvent
+import com.topjohnwu.magisk.utils.DiffObservableList
 import com.topjohnwu.magisk.utils.FingerprintHelper
+import com.topjohnwu.magisk.utils.RxBus
 import com.topjohnwu.magisk.view.dialogs.CustomAlertDialog
 import com.topjohnwu.magisk.view.dialogs.FingerprintAuthDialog
 import io.reactivex.Single
@@ -29,7 +29,7 @@ class SuperuserViewModel(
     private val packageManager: PackageManager,
     private val resources: Resources,
     rxBus: RxBus
-) : MagiskViewModel() {
+) : BaseViewModel() {
 
     val items = DiffObservableList(ComparableRvItem.callback)
     val itemBinding = ItemBinding.of<ComparableRvItem<*>> { itemBinding, _, item ->
@@ -42,6 +42,11 @@ class SuperuserViewModel(
 
     init {
         rxBus.register<PolicyEnableEvent>()
+            .filter {
+                val isIgnored = it.item == ignoreNext
+                if (isIgnored) ignoreNext = null
+                !isIgnored
+            }
             .subscribeK { togglePolicy(it.item, it.enable) }
             .add()
         rxBus.register<PolicyUpdateEvent>()
@@ -84,8 +89,8 @@ class SuperuserViewModel(
                 CustomAlertDialog(this)
                     .setTitle(R.string.su_revoke_title)
                     .setMessage(getString(R.string.su_revoke_msg, item.item.appName))
-                    .setPositiveButton(R.string.yes) { _, _ -> updateState() }
-                    .setNegativeButton(R.string.no_thanks, null)
+                    .setPositiveButton(android.R.string.yes) { _, _ -> updateState() }
+                    .setNegativeButton(android.R.string.no, null)
                     .setCancelable(true)
                     .show()
             }

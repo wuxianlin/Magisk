@@ -32,8 +32,9 @@ object Config : PreferenceModel, DBConfig {
         const val ROOT_ACCESS = "root_access"
         const val SU_MULTIUSER_MODE = "multiuser_mode"
         const val SU_MNT_NS = "mnt_ns"
-        const val SU_MANAGER = "requester"
         const val SU_FINGERPRINT = "su_fingerprint"
+        const val SU_MANAGER = "requester"
+        const val KEYSTORE = "keystore"
 
         // prefs
         const val SU_REQUEST_TIMEOUT = "su_request_timeout"
@@ -47,7 +48,6 @@ object Config : PreferenceModel, DBConfig {
         const val DARK_THEME = "dark_theme"
         const val REPO_ORDER = "repo_order"
         const val SHOW_SYSTEM_APP = "show_system"
-        const val DOWNLOAD_CACHE = "download_cache"
         const val DOWNLOAD_PATH = "download_path"
 
         // system state
@@ -98,10 +98,14 @@ object Config : PreferenceModel, DBConfig {
     }
 
     private val defaultChannel =
-        if (Utils.isCanary) Value.CANARY_DEBUG_CHANNEL
+        if (Utils.isCanary) {
+            if (BuildConfig.DEBUG)
+                Value.CANARY_DEBUG_CHANNEL
+            else
+                Value.CANARY_CHANNEL
+        }
         else Value.DEFAULT_CHANNEL
 
-    var isDownloadCacheEnabled by preference(Key.DOWNLOAD_CACHE, true)
     var downloadPath by preference(Key.DOWNLOAD_PATH, Environment.DIRECTORY_DOWNLOADS)
     var repoOrder by preference(Key.REPO_ORDER, Value.ORDER_DATE)
 
@@ -125,6 +129,7 @@ object Config : PreferenceModel, DBConfig {
     var suMultiuserMode by dbSettings(Key.SU_MULTIUSER_MODE, Value.MULTIUSER_MODE_OWNER_ONLY)
     var suFingerprint by dbSettings(Key.SU_FINGERPRINT, false)
     var suManager by dbStrings(Key.SU_MANAGER, "", true)
+    var keyStoreRaw by dbStrings(Key.KEYSTORE, "", true)
 
     // Always return a path in external storage where we can write
     val downloadDirectory get() =
@@ -132,9 +137,6 @@ object Config : PreferenceModel, DBConfig {
 
     fun initialize() = prefs.edit {
         parsePrefs(this)
-
-        if (!prefs.contains(Key.UPDATE_CHANNEL))
-            putString(Key.UPDATE_CHANNEL, defaultChannel.toString())
 
         // Get actual state
         putBoolean(Key.COREONLY, Const.MAGISK_DISABLE_FILE.exists())
@@ -144,6 +146,9 @@ object Config : PreferenceModel, DBConfig {
         putString(Key.SU_MNT_NS, suMntNamespaceMode.toString())
         putString(Key.SU_MULTIUSER_MODE, suMultiuserMode.toString())
         putBoolean(Key.SU_FINGERPRINT, FingerprintHelper.useFingerprint())
+    }.also {
+        if (!prefs.contains(Key.UPDATE_CHANNEL))
+            prefs.edit().putString(Key.UPDATE_CHANNEL, defaultChannel.toString()).apply()
     }
 
     private fun parsePrefs(editor: SharedPreferences.Editor) = editor.apply {
