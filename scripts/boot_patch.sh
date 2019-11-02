@@ -172,6 +172,9 @@ if [ -f kernel ]; then
   # After:  [mov w2, #-32768]
   ./magiskboot hexpatch kernel 821B8012 E2FF8F12
 
+  ./magiskboot hexpatch kernel 002F76656E646F7200 002F76656E77786C00
+  ./magiskboot hexpatch kernel 002F73797374656D00 002F73797377786C00
+
   # Force kernel to load rootfs
   # skip_initramfs -> want_initramfs
   ./magiskboot hexpatch kernel \
